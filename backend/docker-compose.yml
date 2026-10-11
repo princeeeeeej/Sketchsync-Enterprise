@@ -1,0 +1,101 @@
+services:
+
+  postgres:
+    image: postgres:17
+    container_name: sketchsync-postgres
+
+    environment:
+      POSTGRES_DB: sketchsync
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 12345678
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U postgres -d sketchsync"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+
+  redis:
+    image: redis:8
+    container_name: sketchsync-redis
+
+    ports:
+      - "6379:6379"
+
+    volumes:
+      - redis_data:/data
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "redis-cli",
+          "ping"
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+
+  core-service:
+    build:
+      context: ./core-service
+
+    container_name: sketchsync-core
+
+    ports:
+      - "8081:8081"
+
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/sketchsync
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: 12345678
+
+      JWT_SECRET: change-this-development-secret-key-which-is-at-least-32-bytes-long
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+
+  collaboration-service:
+    build:
+      context: ./collaboration-service
+
+    container_name: sketchsync-collaboration
+
+    ports:
+      - "8082:8082"
+
+    environment:
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+
+      CORE_SERVICE_URL: http://core-service:8081
+
+      JWT_SECRET: change-this-development-secret-key-which-is-at-least-32-bytes-long
+
+    depends_on:
+      redis:
+        condition: service_healthy
+
+      core-service:
+        condition: service_started
+
+
+volumes:
+
+  postgres_data:
+
+  redis_data:
