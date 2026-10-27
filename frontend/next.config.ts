@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 
+const coreServiceUrl = process.env.CORE_SERVICE_URL ?? "http://localhost:8081";
+
 const nextConfig: NextConfig = {
   /* config options here */
   cacheComponents: true,
@@ -16,7 +18,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/api/:path*",
-        destination: "http://localhost:8081/api/:path*",
+        destination: `${coreServiceUrl}/api/:path*`,
       },
     ];
   },

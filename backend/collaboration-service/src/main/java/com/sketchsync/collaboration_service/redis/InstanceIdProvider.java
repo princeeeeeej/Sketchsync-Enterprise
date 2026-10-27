@@ -7,8 +7,7 @@ import java.util.UUID;
 @Component
 public class InstanceIdProvider {
 
-    private final String instanceId =
-            UUID.randomUUID().toString();
+    private final String instanceId = UUID.randomUUID().toString();
 
     public String getInstanceId() {
         return instanceId;

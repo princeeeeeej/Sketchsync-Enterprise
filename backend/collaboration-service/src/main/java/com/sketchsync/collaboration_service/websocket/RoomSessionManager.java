@@ -13,26 +13,15 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class RoomSessionManager {
 
-    private final ConcurrentHashMap<Long, Set<WebSocketSession>> rooms =
-            new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, Set<WebSocketSession>> rooms = new ConcurrentHashMap<>();
 
-    public void joinRoom(
-            Long roomId,
-            WebSocketSession session
-    ) {
-        rooms.computeIfAbsent(
-                roomId,
-                id -> ConcurrentHashMap.newKeySet()
-        ).add(session);
+    public void joinRoom(Long roomId, WebSocketSession session) {
+        rooms.computeIfAbsent(roomId, id -> ConcurrentHashMap.newKeySet()).add(session);
     }
 
-    public void leaveRoom(
-            Long roomId,
-            WebSocketSession session
-    ) {
+    public void leaveRoom(Long roomId, WebSocketSession session) {
 
-        Set<WebSocketSession> sessions =
-                rooms.get(roomId);
+        Set<WebSocketSession> sessions = rooms.get(roomId);
 
         if (sessions == null) {
             return;
@@ -47,30 +36,20 @@ public class RoomSessionManager {
 
     public boolean isRoomEmpty(Long roomId) {
 
-        Set<WebSocketSession> sessions =
-                rooms.get(roomId);
+        Set<WebSocketSession> sessions = rooms.get(roomId);
 
-        return sessions == null
-                || sessions.isEmpty();
+        return sessions == null || sessions.isEmpty();
     }
 
-    public void broadcast(
-            Long roomId,
-            WebSocketSession sender,
-            String message
-    ) {
+    public void broadcast(Long roomId, WebSocketSession sender, String message) {
 
-        Set<WebSocketSession> sessions =
-                rooms.get(roomId);
-
+        Set<WebSocketSession> sessions = rooms.get(roomId);
         if (sessions == null) {
             return;
         }
 
         for (WebSocketSession session : sessions) {
-
-            if (session.getId()
-                    .equals(sender.getId())) {
+            if (session.getId().equals(sender.getId())) {
                 continue;
             }
 
@@ -78,14 +57,8 @@ public class RoomSessionManager {
         }
     }
 
-    public void broadcastToRoom(
-            Long roomId,
-            String message
-    ) {
-
-        Set<WebSocketSession> sessions =
-                rooms.get(roomId);
-
+    public void broadcastToRoom(Long roomId, String message) {
+        Set<WebSocketSession> sessions = rooms.get(roomId);
         if (sessions == null) {
             return;
         }
@@ -97,22 +70,17 @@ public class RoomSessionManager {
 
     public List<String> getUserIds(Long roomId) {
 
-        Set<WebSocketSession> sessions =
-                rooms.get(roomId);
+        Set<WebSocketSession> sessions = rooms.get(roomId);
 
         if (sessions == null) {
             return List.of();
         }
 
-        List<String> userIds =
-                new ArrayList<>();
+        List<String> userIds = new ArrayList<>();
 
         for (WebSocketSession session : sessions) {
 
-            String userId =
-                    (String) session
-                            .getAttributes()
-                            .get("userId");
+            String userId = (String) session.getAttributes().get("userId");
 
             if (userId != null) {
                 userIds.add(userId);
@@ -122,35 +90,16 @@ public class RoomSessionManager {
         return userIds;
     }
 
-    public int getRoomSize(Long roomId) {
+    public boolean hasUser(Long roomId, String userId) {
 
-        Set<WebSocketSession> sessions =
-                rooms.get(roomId);
-
-        return sessions == null
-                ? 0
-                : sessions.size();
-    }
-
-    public boolean hasUser(
-            Long roomId,
-            String userId
-    ) {
-
-        Set<WebSocketSession> sessions =
-                rooms.get(roomId);
+        Set<WebSocketSession> sessions = rooms.get(roomId);
 
         if (sessions == null) {
             return false;
         }
 
         for (WebSocketSession session : sessions) {
-
-            String sessionUserId =
-                    (String) session
-                            .getAttributes()
-                            .get("userId");
-
+            String sessionUserId = (String) session.getAttributes().get("userId");
             if (userId.equals(sessionUserId)) {
                 return true;
             }
@@ -159,61 +108,39 @@ public class RoomSessionManager {
         return false;
     }
 
-    private void send(
-            WebSocketSession session,
-            String message
-    ) {
-
+    private void send(WebSocketSession session, String message) {
         if (!session.isOpen()) {
             return;
         }
 
         try {
-
-            session.sendMessage(
-                    new TextMessage(message)
-            );
+            session.sendMessage(new TextMessage(message));
 
         } catch (Exception e) {
-
-            System.err.println(
-                    "Failed to send WebSocket message | session="
-                            + session.getId()
-            );
+            System.err.println("Failed to send WebSocket message | session=" + session.getId());
         }
     }
 
     @PreDestroy
     public void shutdown() {
 
-        System.out.println(
-                "Closing WebSocket sessions..."
-        );
+        System.out.println("Closing WebSocket sessions...");
 
         for (Set<WebSocketSession> sessions : rooms.values()) {
-
             for (WebSocketSession session : sessions) {
 
                 try {
-
                     if (session.isOpen()) {
                         session.close();
                     }
 
                 } catch (Exception e) {
-
-                    System.err.println(
-                            "Failed to close WebSocket session | session="
-                                    + session.getId()
-                    );
+                    System.err.println("Failed to close WebSocket session | session=" + session.getId());
                 }
             }
         }
 
         rooms.clear();
-
-        System.out.println(
-                "WebSocket sessions closed"
-        );
+        System.out.println("WebSocket sessions closed");
     }
 }

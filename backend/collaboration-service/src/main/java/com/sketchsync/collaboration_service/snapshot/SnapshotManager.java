@@ -14,28 +14,19 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class SnapshotManager {
 
-    private static final long SAVE_DELAY_SECONDS = 5;
+    private static final long SAVE_DELAY_SECONDS = 1;
 
     private final CoreServiceClient coreServiceClient;
 
-    private final Map<Long, SnapshotState> snapshots =
-            new ConcurrentHashMap<>();
+    private final Map<Long, SnapshotState> snapshots = new ConcurrentHashMap<>();
 
-    private final ScheduledExecutorService scheduler =
-            Executors.newScheduledThreadPool(2);
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
 
-    public SnapshotManager(
-            CoreServiceClient coreServiceClient
-    ) {
+    public SnapshotManager(CoreServiceClient coreServiceClient) {
         this.coreServiceClient = coreServiceClient;
     }
 
-    public void updateSnapshot(
-            Long roomId,
-            JsonNode data,
-            String accessToken
-    ) {
-
+    public void updateSnapshot(Long roomId, JsonNode data, String accessToken) {
         SnapshotState state =
                 snapshots.compute(
                         roomId,
@@ -60,14 +51,11 @@ public class SnapshotManager {
         scheduleSave(roomId, state);
     }
 
-    private void scheduleSave(
-            Long roomId,
-            SnapshotState state
-    ) {
-
+    private void scheduleSave(Long roomId, SnapshotState state) {
         synchronized (state) {
-
-            if (state.saveScheduled) {
+            if (snapshots.get(roomId) != state
+                    || state.saveScheduled
+                    || state.saving) {
                 return;
             }
 
@@ -82,9 +70,7 @@ public class SnapshotManager {
     }
 
     private void save(Long roomId) {
-
-        SnapshotState state =
-                snapshots.get(roomId);
+        SnapshotState state = snapshots.get(roomId);
 
         if (state == null) {
             return;
@@ -95,6 +81,14 @@ public class SnapshotManager {
         long version;
 
         synchronized (state) {
+            if (snapshots.get(roomId) != state) {
+                return;
+            }
+
+            if (state.saving) {
+                state.saveScheduled = false;
+                return;
+            }
 
             data = state.data;
             accessToken = state.accessToken;
@@ -106,12 +100,7 @@ public class SnapshotManager {
 
         try {
 
-            System.out.println(
-                    "Saving canvas snapshot | room="
-                            + roomId
-                            + " | version="
-                            + version
-            );
+            System.out.println("Saving canvas snapshot | room=" + roomId + " | version=" + version);
 
             coreServiceClient.saveSnapshot(
                     roomId,
@@ -149,12 +138,7 @@ public class SnapshotManager {
                 }
             }
 
-            System.out.println(
-                    "Canvas snapshot saved | room="
-                            + roomId
-                            + " | version="
-                            + version
-            );
+            System.out.println("Canvas snapshot saved | room=" + roomId + " | version=" + version);
 
         } catch (Exception e) {
 
@@ -163,12 +147,7 @@ public class SnapshotManager {
                 state.saveScheduled = false;
             }
 
-            System.err.println(
-                    "Failed to save canvas snapshot | room="
-                            + roomId
-                            + " | error="
-                            + e.getMessage()
-            );
+            System.err.println("Failed to save canvas snapshot | room=" + roomId + " | error=" + e.getMessage());
 
             /*
              * Retry later instead of permanently losing
@@ -181,16 +160,16 @@ public class SnapshotManager {
         }
     }
 
-    private void scheduleSaveAfterSave(
-            Long roomId,
-            SnapshotState state
-    ) {
+    private void scheduleSaveAfterSave(Long roomId, SnapshotState state) {
+        synchronized (state) {
+            if (snapshots.get(roomId) != state
+                    || state.saveScheduled
+                    || state.saving) {
+                return;
+            }
 
-        if (state.saveScheduled) {
-            return;
+            state.saveScheduled = true;
         }
-
-        state.saveScheduled = true;
 
         scheduler.schedule(
                 () -> save(roomId),
@@ -199,12 +178,8 @@ public class SnapshotManager {
         );
     }
 
-    public void saveImmediately(
-            Long roomId
-    ) {
-
-        SnapshotState state =
-                snapshots.remove(roomId);
+    public void saveImmediately(Long roomId) {
+        SnapshotState state = snapshots.get(roomId);
 
         if (state == null) {
             return;
@@ -212,27 +187,54 @@ public class SnapshotManager {
 
         JsonNode data;
         String accessToken;
+        long version;
 
         synchronized (state) {
+            if (snapshots.get(roomId) != state) {
+                return;
+            }
+
+            // An existing save will handle the latest version.
+            if (state.saving) {
+                return;
+            }
 
             data = state.data;
             accessToken = state.accessToken;
+            version = state.version;
+
+            state.saving = true;
+            state.saveScheduled = false;
         }
 
         try {
-
             coreServiceClient.saveSnapshot(
                     roomId,
                     accessToken,
                     data
             );
 
+            synchronized (state) {
+                state.saving = false;
+
+                if (state.version == version) {
+                    // Delete only after the latest version is persisted.
+                    snapshots.remove(roomId, state);
+                } else {
+                    // New data arrived while the request was running.
+                    scheduleSaveAfterSave(roomId, state);
+                }
+            }
+
             System.out.println(
-                    "Final canvas snapshot saved | room="
-                            + roomId
+                    "Final canvas snapshot saved | room=" + roomId
             );
 
         } catch (Exception e) {
+            synchronized (state) {
+                state.saving = false;
+                state.saveScheduled = false;
+            }
 
             System.err.println(
                     "Failed to save final canvas snapshot | room="
@@ -240,6 +242,9 @@ public class SnapshotManager {
                             + " | error="
                             + e.getMessage()
             );
+
+            // Keep the state and retry.
+            scheduleSave(roomId, state);
         }
     }
 
@@ -255,21 +260,13 @@ public class SnapshotManager {
 
         private boolean saving;
 
-        SnapshotState(
-                JsonNode data,
-                String accessToken
-        ) {
-
+        SnapshotState(JsonNode data, String accessToken) {
             this.data = data;
             this.accessToken = accessToken;
             this.version = 1;
         }
 
-        void update(
-                JsonNode data,
-                String accessToken
-        ) {
-
+        synchronized void update(JsonNode data, String accessToken) {
             this.data = data;
             this.accessToken = accessToken;
             this.version++;
@@ -278,22 +275,14 @@ public class SnapshotManager {
 
     @PreDestroy
     public void shutdown() {
-
-        System.out.println(
-                "SnapshotManager shutting down..."
-        );
+        System.out.println("SnapshotManager shutting down...");
 
         for (Long roomId : snapshots.keySet()) {
-
             try {
                 saveImmediately(roomId);
-            } catch (Exception e) {
-                System.err.println(
-                        "Failed to flush snapshot during shutdown | room="
-                                + roomId
-                                + " | error="
-                                + e.getMessage()
-                );
+            }
+            catch (Exception e) {
+                System.err.println("Failed to flush snapshot during shutdown | room=" + roomId + " | error=" + e.getMessage());
             }
         }
 
@@ -301,23 +290,16 @@ public class SnapshotManager {
 
         try {
 
-            if (!scheduler.awaitTermination(
-                    10,
-                    TimeUnit.SECONDS
-            )) {
-
+            if (!scheduler.awaitTermination(10, TimeUnit.SECONDS)) {
                 scheduler.shutdownNow();
             }
 
-        } catch (InterruptedException e) {
-
+        }
+        catch (InterruptedException e) {
             scheduler.shutdownNow();
-
             Thread.currentThread().interrupt();
         }
 
-        System.out.println(
-                "SnapshotManager shutdown complete"
-        );
+        System.out.println("SnapshotManager shutdown complete");
     }
 }

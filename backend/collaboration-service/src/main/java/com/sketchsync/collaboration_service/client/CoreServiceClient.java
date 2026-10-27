@@ -26,14 +26,8 @@ public class CoreServiceClient {
         this.jsonMapper = jsonMapper;
     }
 
-    public boolean isMember(
-            Long roomId,
-            String accessToken
-    ) {
-
-        System.out.println(
-                "Checking membership | roomId=" + roomId
-        );
+    public boolean isMember(Long roomId, String accessToken) {
+        System.out.println("Checking membership | roomId=" + roomId);
 
         Boolean result = restClient
                 .get()
@@ -49,43 +43,24 @@ public class CoreServiceClient {
                 .onStatus(
                         HttpStatusCode::isError,
                         (request, response) -> {
-                            System.err.println(
-                                    "Core service returned: "
-                                            + response.getStatusCode()
-                            );
+                            System.err.println("Core service returned: " + response.getStatusCode());
                         }
                 )
                 .body(Boolean.class);
 
-        System.out.println(
-                "Core membership response: " + result
-        );
-
+        System.out.println("Core membership response: " + result);
         return Boolean.TRUE.equals(result);
     }
 
-    public void saveSnapshot(
-            Long roomId,
-            String accessToken,
-            JsonNode data
-    ) {
+    public void saveSnapshot(Long roomId, String accessToken, JsonNode data) {
 
-        System.out.println(
-                "Saving snapshot to core | roomId=" + roomId
-        );
+        System.out.println("Saving snapshot to core | roomId=" + roomId);
 
-        ObjectNode requestBody =
-                jsonMapper.createObjectNode();
+        ObjectNode requestBody = jsonMapper.createObjectNode();
 
-        requestBody.set(
-                "data",
-                data
-        );
+        requestBody.set("data", data);
 
-        System.out.println(
-                "Snapshot request body: "
-                        + requestBody
-        );
+        System.out.println("Snapshot request body: " + requestBody);
 
         restClient
                 .post()
@@ -105,21 +80,12 @@ public class CoreServiceClient {
                 .retrieve()
                 .toBodilessEntity();
 
-        System.out.println(
-                "Snapshot saved successfully | roomId="
-                        + roomId
-        );
+        System.out.println("Snapshot saved successfully | roomId=" + roomId);
     }
 
-    public JsonNode getSnapshot(
-            Long roomId,
-            String accessToken
-    ) {
+    public JsonNode getSnapshot(Long roomId, String accessToken) {
 
-        System.out.println(
-                "Getting snapshot from core | roomId="
-                        + roomId
-        );
+        System.out.println("Getting snapshot from core | roomId=" + roomId);
 
         JsonNode result = restClient
                 .get()
@@ -134,11 +100,7 @@ public class CoreServiceClient {
                 .retrieve()
                 .body(JsonNode.class);
 
-        System.out.println(
-                "Snapshot retrieved | roomId="
-                        + roomId
-        );
-
+        System.out.println("Snapshot retrieved | roomId=" + roomId);
         return result;
     }
 }

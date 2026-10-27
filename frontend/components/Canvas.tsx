@@ -100,26 +100,46 @@ export default function Canvas({
 
     const token = localStorage.getItem("token");
     fetch(`${BACKEND_URL}/api/canvas/${roomId}`, {
-      headers: { authorization: token ?? "" },
+      method: "GET",
       credentials: "include",
+      headers: {
+        Accept: "application/json",
+      },
+      cache: "no-store",
     })
-      .then(async (res) => {
-        const data = await res.json();
-        if (!res.ok) {
-          setError(data.message || "Room unavailable");
-          return;
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(
+            `Failed to load canvas: ${response.status}`
+          );
         }
-        manager.loadShapes(data.elements);
+
+        return response.json();
       })
-      .catch((err) => {
-        console.error("Canvas load error:", err);
-        setError("Network error while loading room.");
+      .then((data) => {
+        const rawShapes =
+          data?.data?.elements ??
+          data?.data ??
+          data?.elements ??
+          [];
+
+        manager.loadShapes(
+          Array.isArray(rawShapes) ? rawShapes : []
+        );
+      })
+      .catch((error) => {
+        console.error("Canvas load error:", error);
+        setError("Failed to load the canvas. Please retry.");
       });
 
     // Fetch room details to get slug
     fetch(`${BACKEND_URL}/api/rooms/${roomId}`, {
-      headers: { authorization: token ?? "" },
+      method: "GET",
       credentials: "include",
+      headers: {
+        Accept: "application/json",
+      },
+      cache: "no-store",
     })
       .then(async (res) => {
         if (res.ok) {
@@ -160,8 +180,17 @@ export default function Canvas({
         managerRef.current.onRemoteDraw(message.elements);
       if (message.type === "erase")
         managerRef.current.onRemoteErase(message.ids);
-      if (message.type === "canvas_state" || message.type === "snapshot")
-        managerRef.current.onRemoteDraw(message.data.elements ?? []);
+      if (message.type === "canvas_state" || message.type === "snapshot") {
+        const rawShapes =
+          message.data?.data?.elements ??
+          message.data?.data ??
+          message.data?.elements ??
+          (Array.isArray(message.data) ? message.data : []);
+        const shapes = Array.isArray(rawShapes) ? rawShapes : [];
+        if (shapes.length > 0) {
+          managerRef.current.loadShapes(shapes);
+        }
+      }
       if (message.type === "cursor") {
         managerRef.current.updateCursor(
           message.userId,
@@ -207,6 +236,25 @@ export default function Canvas({
       }
     };
 
+    const joinRoom = () => {
+      if (socket.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      socket.send(
+        JSON.stringify({
+          type: "join_room",
+          roomId: Number(roomId),
+        })
+      );
+    };
+
+    if (socket.readyState === WebSocket.OPEN) {
+      joinRoom();
+    } else {
+      socket.addEventListener("open", joinRoom, { once: true });
+    }
+
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       const factor = 1 - e.deltaY * 0.005;
@@ -246,6 +294,7 @@ export default function Canvas({
     canvas.addEventListener("wheel", handleWheel, { passive: false });
 
     return () => {
+      socket.removeEventListener("open", joinRoom);
       canvas.removeEventListener("wheel", handleWheel);
       window.removeEventListener("keydown", handleKeyDown);
     };
@@ -323,15 +372,29 @@ export default function Canvas({
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-[#fcfcfb]">
-      <div className="absolute top-6 left-6 flex items-center gap-2.5 px-4 py-2 bg-white/90 backdrop-blur-md border border-stone-200/90 shadow-[0_4px_20px_rgba(0,0,0,0.06)] rounded-full z-50">
-        <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" />
-        <span className="text-xs font-semibold text-stone-600">
-          {roomSlug ? (
-            <span className="font-mono text-stone-900 font-bold">{roomSlug}</span>
-          ) : (
-            <>Room <span className="font-mono text-stone-900 font-bold ml-1">#{roomId}</span></>
-          )}
-        </span>
+      <div
+        className="
+            absolute left-6 top-3 z-50
+            rounded-[9px]
+            border border-[#1747FF]
+            bg-[#1747FF]
+            px-4 py-2.5
+            text-sm font-medium
+            tracking-[-0.045em]
+            text-white
+            shadow-[0_4px_14px_rgba(23,71,255,0.18)]
+            transition-all duration-200
+            hover:bg-[#1238D5]
+            "
+      >
+        {roomSlug ? (
+          <span>{roomSlug}</span>
+        ) : (
+          <>
+            <span className="text-white/75">Room</span>{" "}
+            <span className="font-semibold">#{roomId}</span>
+          </>
+        )}
       </div>
       <AvatarStack
         users={[

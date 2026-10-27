@@ -7,8 +7,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 public class RedisCollaborationService {
 
-    private static final String CHANNEL_PREFIX =
-            "sketchsync:room:";
+    private static final String CHANNEL_PREFIX = "sketchsync:room:";
 
     private final StringRedisTemplate redisTemplate;
     private final JsonMapper jsonMapper;
@@ -24,10 +23,7 @@ public class RedisCollaborationService {
         this.instanceIdProvider = instanceIdProvider;
     }
 
-    public void publish(
-            Long roomId,
-            String payload
-    ) {
+    public void publish(Long roomId, String payload) {
 
         RedisCollaborationEvent event =
                 new RedisCollaborationEvent(
@@ -38,31 +34,14 @@ public class RedisCollaborationService {
                 );
 
         try {
+            String message = jsonMapper.writeValueAsString(event);
+            String channel = CHANNEL_PREFIX + roomId;
+            System.out.println("Publishing Redis event | channel=" + channel + " | payload=" + payload);
+            redisTemplate.convertAndSend(channel, message);
 
-            String message =
-                    jsonMapper.writeValueAsString(event);
-
-            String channel =
-                    CHANNEL_PREFIX + roomId;
-
-            System.out.println(
-                    "Publishing Redis event | channel="
-                            + channel
-                            + " | payload="
-                            + payload
-            );
-
-            redisTemplate.convertAndSend(
-                    channel,
-                    message
-            );
-
-        } catch (Exception e) {
-
-            throw new RuntimeException(
-                    "Failed to publish collaboration event",
-                    e
-            );
+        }
+        catch (Exception e) {
+            throw new RuntimeException("Failed to publish collaboration event", e);
         }
     }
 
@@ -83,32 +62,16 @@ public class RedisCollaborationService {
 
         try {
 
-            String message =
-                    jsonMapper.writeValueAsString(event);
+            String message = jsonMapper.writeValueAsString(event);
 
-            String channel =
-                    CHANNEL_PREFIX + roomId;
+            String channel = CHANNEL_PREFIX + roomId;
 
-            System.out.println(
-                    "Publishing presence | type="
-                            + type
-                            + " | room="
-                            + roomId
-                            + " | user="
-                            + userId
-            );
+            System.out.println("Publishing presence | type=" + type + " | room=" + roomId + " | user=" + userId);
 
-            redisTemplate.convertAndSend(
-                    channel,
-                    message
-            );
+            redisTemplate.convertAndSend(channel, message);
 
         } catch (Exception e) {
-
-            throw new RuntimeException(
-                    "Failed to publish presence event",
-                    e
-            );
+            throw new RuntimeException("Failed to publish presence event", e);
         }
     }
 }

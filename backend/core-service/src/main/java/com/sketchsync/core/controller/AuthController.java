@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Duration;
@@ -30,11 +31,8 @@ public class AuthController {
     @PostMapping("/signup")
     public ResponseEntity<AuthResponse> signup(@Valid @RequestBody SignupRequest request) {
         User user = authService.signup(request.email(), request.password(), request.name(), request.photo());
-
         String token = authService.generateToken(user);
-
         ResponseCookie cookie = createAuthCookie(token);
-
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, cookie.toString())
                 .body(toAuthResponse(user));
@@ -81,5 +79,12 @@ public class AuthController {
 
     private AuthResponse toAuthResponse(User user) {
         return new AuthResponse(user.getId(), user.getEmail(), user.getName(), user.getPhoto());
+    }
+
+    @GetMapping("/me")
+    private AuthResponse me(Authentication authentication) {
+        String userId = authentication.getName();
+        User user = authService.getUserByUserId(userId);
+        return new AuthResponse(userId, user.getEmail(), user.getName(), user.getPhoto());
     }
 }

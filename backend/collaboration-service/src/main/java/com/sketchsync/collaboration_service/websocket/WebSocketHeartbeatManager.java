@@ -13,14 +13,11 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class WebSocketHeartbeatManager {
 
-    private final Map<String, WebSocketSession> sessions =
-            new ConcurrentHashMap<>();
+    private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
 
-    private final ScheduledExecutorService scheduler =
-            Executors.newSingleThreadScheduledExecutor();
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
     public WebSocketHeartbeatManager() {
-
         scheduler.scheduleAtFixedRate(
                 this::checkConnections,
                 30,
@@ -38,32 +35,24 @@ public class WebSocketHeartbeatManager {
     }
 
     private void checkConnections() {
-
         for (WebSocketSession session : sessions.values()) {
-
             if (!session.isOpen()) {
                 sessions.remove(session.getId());
                 continue;
             }
 
             try {
+                session.sendMessage(new org.springframework.web.socket.PingMessage());
 
-                session.sendMessage(
-                        new org.springframework.web.socket.PingMessage()
-                );
-
-            } catch (Exception e) {
-
-                System.err.println(
-                        "Heartbeat failed | session="
-                                + session.getId()
-                );
+            }
+            catch (Exception e) {
+                System.err.println("Heartbeat failed | session=" + session.getId());
 
                 try {
                     session.close();
-                } catch (Exception ignored) {
                 }
-
+                catch (Exception ignored) {
+                }
                 sessions.remove(session.getId());
             }
         }
@@ -71,27 +60,18 @@ public class WebSocketHeartbeatManager {
 
     @PreDestroy
     public void shutdown() {
-
-        System.out.println(
-                "Stopping WebSocket heartbeat..."
-        );
-
+        System.out.println("Stopping WebSocket heartbeat...");
         scheduler.shutdown();
 
         try {
 
-            if (!scheduler.awaitTermination(
-                    5,
-                    TimeUnit.SECONDS
-            )) {
-
+            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
                 scheduler.shutdownNow();
             }
 
-        } catch (InterruptedException e) {
-
+        }
+        catch (InterruptedException e) {
             scheduler.shutdownNow();
-
             Thread.currentThread().interrupt();
         }
     }

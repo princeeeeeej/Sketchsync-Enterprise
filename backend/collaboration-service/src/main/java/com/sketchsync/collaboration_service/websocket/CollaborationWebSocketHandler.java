@@ -17,8 +17,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Component
-public class CollaborationWebSocketHandler
-        extends TextWebSocketHandler {
+public class CollaborationWebSocketHandler extends TextWebSocketHandler {
 
     private final RedisCollaborationService redisCollaborationService;
     private final RoomSessionManager roomSessionManager;
@@ -47,13 +46,9 @@ public class CollaborationWebSocketHandler
     }
 
     @Override
-    public void afterConnectionEstablished(
-            WebSocketSession session
-    ) throws Exception {
+    public void afterConnectionEstablished(WebSocketSession session) throws Exception {
 
-        System.out.println(
-                "WebSocket connected: " + session.getId()
-        );
+        System.out.println("WebSocket connected: " + session.getId());
 
         session.sendMessage(
                 new TextMessage("""
@@ -68,15 +63,15 @@ public class CollaborationWebSocketHandler
     }
 
     @Override
-    protected void handleTextMessage(
-            WebSocketSession session,
-            TextMessage message
-    ) throws Exception {
+    protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
 
         String payload = message.getPayload();
 
         System.out.println(
-                "Received [" + session.getId() + "]: " + payload
+                "Received WebSocket message | session="
+                        + session.getId()
+                        + " | payloadChars="
+                        + payload.length()
         );
 
         JsonNode root;
@@ -107,18 +102,11 @@ public class CollaborationWebSocketHandler
                     root
             );
 
-            /*
-             * Save must be handled separately because it
-             * persists the canvas snapshot.
-             */
             case "save" -> handleSaveSnapshot(
                     session,
                     root
             );
 
-            /*
-             * Normal realtime collaboration events.
-             */
             case "draw",
                  "cursor",
                  "preview",
@@ -150,68 +138,34 @@ public class CollaborationWebSocketHandler
      * 7. Notify existing users
      * 8. Send room state to joining user
      */
-    private void handleJoinRoom(
-            WebSocketSession session,
-            JsonNode root
-    ) throws Exception {
-
+    private void handleJoinRoom(WebSocketSession session, JsonNode root) throws Exception {
         Long roomId = extractRoomId(root);
 
         if (roomId == null) {
-            sendError(
-                    session,
-                    "roomId is required"
-            );
+            sendError(session, "roomId is required");
             return;
         }
 
-        String accessToken =
-                (String) session.getAttributes()
-                        .get("accessToken");
+        String accessToken = (String) session.getAttributes().get("accessToken");
 
         if (accessToken == null) {
-            sendError(
-                    session,
-                    "Authentication required"
-            );
+            sendError(session, "Authentication required");
             return;
         }
 
-        /*
-         * Ask core-service whether the authenticated
-         * user belongs to this room.
-         */
         boolean member;
 
         try {
-
-            member = coreServiceClient.isMember(
-                    roomId,
-                    accessToken
-            );
-
-        } catch (Exception e) {
-
-            System.err.println(
-                    "Failed to verify room membership: "
-                            + e.getMessage()
-            );
-
-            sendError(
-                    session,
-                    "Unable to verify room membership"
-            );
-
+            member = coreServiceClient.isMember(roomId, accessToken);
+        }
+        catch (Exception e) {
+            System.err.println("Failed to verify room membership: " + e.getMessage());
+            sendError(session, "Unable to verify room membership");
             return;
         }
 
         if (!member) {
-
-            sendError(
-                    session,
-                    "You are not a member of this room"
-            );
-
+            sendError(session, "You are not a member of this room");
             return;
         }
 
@@ -219,20 +173,12 @@ public class CollaborationWebSocketHandler
          * If this session was already inside another room,
          * remove it from that room first.
          */
-        Long previousRoomId =
-                (Long) session.getAttributes()
-                        .get("roomId");
+        Long previousRoomId = (Long) session.getAttributes().get("roomId");
 
         if (previousRoomId != null) {
+            String userId = (String) session.getAttributes().get("userId");
 
-            String userId =
-                    (String) session.getAttributes()
-                            .get("userId");
-
-            roomSessionManager.leaveRoom(
-                    previousRoomId,
-                    session
-            );
+            roomSessionManager.leaveRoom(previousRoomId, session);
 
             roomSessionManager.broadcastToRoom(
                     previousRoomId,
@@ -248,13 +194,8 @@ public class CollaborationWebSocketHandler
              * If this was the last local user in the
              * previous room, unsubscribe from Redis.
              */
-            if (roomSessionManager.isRoomEmpty(
-                    previousRoomId
-            )) {
-
-                redisRoomSubscriptionManager.unsubscribe(
-                        previousRoomId
-                );
+            if (roomSessionManager.isRoomEmpty(previousRoomId)) {
+                redisRoomSubscriptionManager.unsubscribe(previousRoomId);
             }
         }
 
@@ -262,36 +203,24 @@ public class CollaborationWebSocketHandler
          * Check whether this is the first local user
          * in this room before adding the session.
          */
-        boolean firstLocalUser =
-                roomSessionManager.isRoomEmpty(roomId);
+        boolean firstLocalUser = roomSessionManager.isRoomEmpty(roomId);
 
         /*
          * Add session to local room.
          */
-        roomSessionManager.joinRoom(
-                roomId,
-                session
-        );
+        roomSessionManager.joinRoom(roomId, session);
 
-        session.getAttributes().put(
-                "roomId",
-                roomId
-        );
+        session.getAttributes().put("roomId", roomId);
 
         /*
          * First local user means this JVM needs to
          * subscribe to the Redis channel for this room.
          */
         if (firstLocalUser) {
-
-            redisRoomSubscriptionManager.subscribe(
-                    roomId
-            );
+            redisRoomSubscriptionManager.subscribe(roomId);
         }
 
-        String userId =
-                (String) session.getAttributes()
-                        .get("userId");
+        String userId = (String) session.getAttributes().get("userId");
 
         /*
          * Notify all existing local users that
@@ -312,11 +241,9 @@ public class CollaborationWebSocketHandler
          * Get the current users connected to this
          * collaboration-service instance.
          */
-        List<String> userIds =
-                roomSessionManager.getUserIds(roomId);
+        List<String> userIds = roomSessionManager.getUserIds(roomId);
 
-        String usersJson =
-                userIds.stream()
+        String usersJson = userIds.stream()
                         .map(id -> "\"" + id + "\"")
                         .collect(
                                 Collectors.joining(",")
@@ -340,47 +267,26 @@ public class CollaborationWebSocketHandler
                 )
         );
 
-        redisCollaborationService.publishPresence(
-                roomId,
-                userId,
-                "user_joined"
-        );
+        redisCollaborationService.publishPresence(roomId, userId, "user_joined");
 
         /*
          * Load the last persisted canvas snapshot.
          */
-        sendCanvasSnapshot(
-                session,
-                roomId
-        );
+        sendCanvasSnapshot(session, roomId);
 
-        System.out.println(
-                "User "
-                        + userId
-                        + " joined room "
-                        + roomId
-        );
+        System.out.println("User " + userId + " joined room " + roomId);
     }
 
-    private void handleLeaveRoom(
-            WebSocketSession session,
-            JsonNode root
-    ) throws Exception {
+    private void handleLeaveRoom(WebSocketSession session, JsonNode root) throws Exception {
 
         Long roomId = extractRoomId(root);
 
         if (roomId == null) {
-            roomId = (Long) session.getAttributes()
-                    .get("roomId");
+            roomId = (Long) session.getAttributes().get("roomId");
         }
 
         if (roomId == null) {
-
-            sendError(
-                    session,
-                    "Not currently in a room"
-            );
-
+            sendError(session, "Not currently in a room");
             return;
         }
 
@@ -397,13 +303,7 @@ public class CollaborationWebSocketHandler
                 )
         );
 
-        System.out.println(
-                "User explicitly left room | user="
-                        + session.getAttributes()
-                        .get("userId")
-                        + " | room="
-                        + roomId
-        );
+        System.out.println("User explicitly left room | user=" + session.getAttributes().get("userId") + " | room=" + roomId);
     }
 
     /**
@@ -420,67 +320,35 @@ public class CollaborationWebSocketHandler
      * They are broadcast locally and published to Redis
      * for other collaboration-service instances.
      */
-    private void handleCollaborationMessage(
-            WebSocketSession session,
-            JsonNode root,
-            String originalPayload
-    ) throws Exception {
+    private void handleCollaborationMessage(WebSocketSession session, JsonNode root, String originalPayload) throws Exception {
 
-        Long roomId =
-                (Long) session.getAttributes().get("roomId");
+        Long roomId = (Long) session.getAttributes().get("roomId");
 
         if (roomId == null) {
-
-            sendError(
-                    session,
-                    "Join a room before sending collaboration events"
-            );
-
+            sendError(session, "Join a room before sending collaboration events");
             return;
         }
 
-        Long messageRoomId =
-                extractRoomId(root);
+        Long messageRoomId = extractRoomId(root);
 
-        if (messageRoomId != null
-                && !roomId.equals(messageRoomId)) {
-
-            sendError(
-                    session,
-                    "Message roomId does not match joined room"
-            );
-
+        if (messageRoomId != null && !roomId.equals(messageRoomId)) {
+            sendError(session, "Message roomId does not match joined room");
             return;
         }
 
-        System.out.println(
-                "Broadcasting locally | room="
-                        + roomId
-                        + " | sender="
-                        + session.getId()
-        );
+        System.out.println("Broadcasting locally | room=" + roomId + " | sender=" + session.getId());
 
         /*
          * 1. Send to other users connected to this instance.
          */
-        roomSessionManager.broadcast(
-                roomId,
-                session,
-                originalPayload
-        );
+        roomSessionManager.broadcast(roomId, session, originalPayload);
 
-        System.out.println(
-                "Publishing to Redis | room="
-                        + roomId
-        );
+        System.out.println("Publishing to Redis | room=" + roomId);
 
         /*
          * 2. Send to other collaboration-service instances.
          */
-        redisCollaborationService.publish(
-                roomId,
-                originalPayload
-        );
+        redisCollaborationService.publish(roomId, originalPayload);
     }
 
     /**
@@ -501,110 +369,45 @@ public class CollaborationWebSocketHandler
      *      ↓
      * PostgreSQL
      */
-    private void handleSaveSnapshot(
-            WebSocketSession session,
-            JsonNode root
-    ) throws Exception {
-
-        Long roomId =
-                (Long) session.getAttributes()
-                        .get("roomId");
+    private void handleSaveSnapshot(WebSocketSession session, JsonNode root) throws Exception {
+        Long roomId = (Long) session.getAttributes().get("roomId");
 
         if (roomId == null) {
-
-            sendError(
-                    session,
-                    "Join a room before saving canvas"
-            );
-
+            sendError(session, "Join a room before saving canvas");
             return;
         }
 
         Long messageRoomId = extractRoomId(root);
-
-        if (messageRoomId != null
-                && !roomId.equals(messageRoomId)) {
-
-            sendError(
-                    session,
-                    "Message roomId does not match joined room"
-            );
-
+        if (messageRoomId != null && !roomId.equals(messageRoomId)) {
+            sendError(session, "Message roomId does not match joined room");
             return;
         }
 
         JsonNode data = root.get("data");
 
         if (data == null || data.isNull()) {
-
-            sendError(
-                    session,
-                    "Canvas data is required"
-            );
-
+            sendError(session, "Canvas data is required");
             return;
         }
 
-        String accessToken =
-                (String) session
-                        .getAttributes()
-                        .get("accessToken");
+        String accessToken = (String) session.getAttributes().get("accessToken");
 
         if (accessToken == null) {
-
-            sendError(
-                    session,
-                    "Authentication required"
-            );
-
+            sendError(session, "Authentication required");
             return;
         }
 
-        System.out.println(
-                "Saving canvas snapshot | room="
-                        + roomId
-        );
+        System.out.println("Saving canvas snapshot | room=" + roomId);
 
-        snapshotManager.updateSnapshot(
-                roomId,
-                data,
-                accessToken
-        );
+        snapshotManager.updateSnapshot(roomId, data, accessToken);
 
-        /*
-         * Notify other connected users that a save event
-         * occurred.
-         *
-         * The actual persistence is handled above by
-         * SnapshotManager.
-         */
-        roomSessionManager.broadcast(
-                roomId,
-                session,
-                root.toString()
-        );
-
-        redisCollaborationService.publish(
-                roomId,
-                root.toString()
-        );
-
-        System.out.println(
-                "Canvas snapshot queued | room="
-                        + roomId
-        );
+        System.out.println("Canvas snapshot queued | room=" + roomId);
     }
 
-    private Long extractRoomId(
-            JsonNode root
-    ) {
+    private Long extractRoomId(JsonNode root) {
+        JsonNode roomIdNode = root.get("roomId");
 
-        JsonNode roomIdNode =
-                root.get("roomId");
-
-        if (roomIdNode == null
-                || roomIdNode.isNull()) {
-
+        if (roomIdNode == null || roomIdNode.isNull()) {
             return null;
         }
 
@@ -615,13 +418,9 @@ public class CollaborationWebSocketHandler
         return roomIdNode.asLong();
     }
 
-    private void sendError(
-            WebSocketSession session,
-            String message
-    ) throws Exception {
+    private void sendError(WebSocketSession session, String message) throws Exception {
 
-        String escapedMessage =
-                message.replace("\"", "\\\"");
+        String escapedMessage = message.replace("\"", "\\\"");
 
         session.sendMessage(
                 new TextMessage(
@@ -636,131 +435,54 @@ public class CollaborationWebSocketHandler
     }
 
     @Override
-    public void afterConnectionClosed(
-            WebSocketSession session,
-            CloseStatus status
-    ) throws Exception {
-
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         heartbeatManager.unregister(session);
-
         cleanupSession(session);
-
-        System.out.println(
-                "WebSocket closed | session="
-                        + session.getId()
-                        + " | status="
-                        + status.getCode()
-        );
+        System.out.println("WebSocket closed | session=" + session.getId() + " | status=" + status.getCode());
     }
 
-    private void sendCanvasSnapshot(
-            WebSocketSession session,
-            Long roomId
-    ) {
-
+    private void sendCanvasSnapshot(WebSocketSession session, Long roomId) {
         try {
-
-            String accessToken =
-                    (String) session.getAttributes()
-                            .get("accessToken");
-
-            JsonNode snapshot =
-                    coreServiceClient.getSnapshot(
-                            roomId,
-                            accessToken
-                    );
+            String accessToken = (String) session.getAttributes().get("accessToken");
+            JsonNode snapshot = coreServiceClient.getSnapshot(roomId, accessToken);
 
             if (snapshot == null || snapshot.isNull()) {
-
-                System.out.println(
-                        "No canvas snapshot found | room="
-                                + roomId
-                );
-
+                System.out.println("No canvas snapshot found | room=" + roomId);
                 return;
             }
 
-            ObjectNode message =
-                    jsonMapper.createObjectNode();
+            ObjectNode message = jsonMapper.createObjectNode();
+            message.put("type", "canvas_state");
+            message.put("roomId", roomId);
+            message.set("data", snapshot);
+            session.sendMessage(new TextMessage(message.toString()));
 
-            message.put(
-                    "type",
-                    "canvas_state"
-            );
+            System.out.println("Canvas snapshot sent | room=" + roomId);
 
-            message.put(
-                    "roomId",
-                    roomId
-            );
-
-            message.set(
-                    "data",
-                    snapshot
-            );
-
-            session.sendMessage(
-                    new TextMessage(
-                            message.toString()
-                    )
-            );
-
-            System.out.println(
-                    "Canvas snapshot sent | room="
-                            + roomId
-            );
-
-        } catch (Exception e) {
-
-            System.err.println(
-                    "Failed to load canvas snapshot | room="
-                            + roomId
-                            + " | error="
-                            + e.getMessage()
-            );
+        }
+        catch (Exception e) {
+            System.err.println("Failed to load canvas snapshot | room=" + roomId + " | error=" + e.getMessage());
         }
     }
 
-    private void cleanupSession(
-            WebSocketSession session
-    ) {
+    private void cleanupSession(WebSocketSession session) {
 
-        String userId =
-                (String) session.getAttributes()
-                        .get("userId");
-
-        Long roomId =
-                (Long) session.getAttributes()
-                        .get("roomId");
+        String userId = (String) session.getAttributes().get("userId");
+        Long roomId = (Long) session.getAttributes().get("roomId");
 
         if (roomId == null) {
             return;
         }
 
-        /*
-         * Remove this exact WebSocket session.
-         */
-        roomSessionManager.leaveRoom(
-                roomId,
-                session
-        );
+        roomSessionManager.leaveRoom(roomId, session);
 
         /*
          * Check whether the same user still has
          * another WebSocket connection in this room.
          */
-        boolean stillConnected =
-                userId != null
-                        && roomSessionManager.hasUser(
-                        roomId,
-                        userId
-                );
+        boolean stillConnected = userId != null && roomSessionManager.hasUser(roomId, userId);
 
-        /*
-         * Only announce user_left when this was
-         * the user's last connection on this instance.
-         */
         if (!stillConnected && userId != null) {
-
             String userLeftMessage = """
                 {
                     "type": "user_left",
@@ -771,20 +493,13 @@ public class CollaborationWebSocketHandler
             /*
              * Users on this collaboration instance.
              */
-            roomSessionManager.broadcastToRoom(
-                    roomId,
-                    userLeftMessage
-            );
+            roomSessionManager.broadcastToRoom(roomId, userLeftMessage);
 
             /*
              * Users connected to other collaboration
              * service instances.
              */
-            redisCollaborationService.publishPresence(
-                    roomId,
-                    userId,
-                    "user_left"
-            );
+            redisCollaborationService.publishPresence(roomId, userId, "user_left");
         }
 
         /*
@@ -792,23 +507,11 @@ public class CollaborationWebSocketHandler
          * for this room on this instance.
          */
         if (roomSessionManager.isRoomEmpty(roomId)) {
-
-            redisRoomSubscriptionManager.unsubscribe(
-                    roomId
-            );
+            redisRoomSubscriptionManager.unsubscribe(roomId);
+            snapshotManager.saveImmediately(roomId);
         }
 
         session.getAttributes().remove("roomId");
-
-        System.out.println(
-                "Session cleanup | session="
-                        + session.getId()
-                        + " | user="
-                        + userId
-                        + " | room="
-                        + roomId
-                        + " | stillConnected="
-                        + stillConnected
-        );
+        System.out.println("Session cleanup | session=" + session.getId() + " | user=" + userId + " | room=" + roomId + " | stillConnected=" + stillConnected);
     }
 }

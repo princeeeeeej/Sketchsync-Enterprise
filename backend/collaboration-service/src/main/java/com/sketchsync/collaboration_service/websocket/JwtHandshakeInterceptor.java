@@ -28,7 +28,6 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
     ) {
 
         String cookieHeader = request.getHeaders().getFirst(HttpHeaders.COOKIE);
-
         if (cookieHeader == null) {
             return false;
         }
@@ -58,7 +57,6 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
     }
 
     private String extractAccessToken(String cookieHeader) {
-
         String[] cookies = cookieHeader.split(";");
         for (String cookie : cookies) {
             String[] parts = cookie.trim().split("=", 2);

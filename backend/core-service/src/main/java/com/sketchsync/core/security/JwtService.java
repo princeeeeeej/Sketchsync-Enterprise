@@ -25,13 +25,8 @@ public class JwtService {
     }
 
     public String generateToken(String userId) {
-
         Date now = new Date();
-
-        Date expiration = new Date(
-                now.getTime() + expirationMs
-        );
-
+        Date expiration = new Date(now.getTime() + expirationMs);
         return Jwts.builder()
                 .subject(userId)
                 .issuedAt(now)

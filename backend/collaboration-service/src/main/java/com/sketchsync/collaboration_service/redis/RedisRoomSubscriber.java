@@ -27,45 +27,22 @@ public class RedisRoomSubscriber implements MessageListener {
     }
 
     @Override
-    public void onMessage(
-            Message message,
-            byte[] pattern
-    ) {
+    public void onMessage(Message message, byte[] pattern) {
 
-        String payload =
-                new String(
-                        message.getBody(),
-                        StandardCharsets.UTF_8
-                );
+        String payload = new String(message.getBody(), StandardCharsets.UTF_8);
 
         try {
+            JsonNode root = jsonMapper.readTree(payload);
+            String eventType = root.path("eventType").asText();
+            String instanceId = root.path("instanceId").asText();
+            Long roomId = root.path("roomId").asLong();
 
-            JsonNode root =
-                    jsonMapper.readTree(payload);
-
-            String eventType =
-                    root.path("eventType").asText();
-
-            String instanceId =
-                    root.path("instanceId").asText();
-
-            Long roomId =
-                    root.path("roomId").asLong();
-
-            if (instanceIdProvider
-                    .getInstanceId()
-                    .equals(instanceId)) {
-
+            if (instanceIdProvider.getInstanceId().equals(instanceId)) {
                 return;
             }
 
             if ("collaboration".equals(eventType)) {
-
-                RedisCollaborationEvent event =
-                        jsonMapper.readValue(
-                                payload,
-                                RedisCollaborationEvent.class
-                        );
+                RedisCollaborationEvent event = jsonMapper.readValue(payload, RedisCollaborationEvent.class);
 
                 roomSessionManager.broadcastToRoom(
                         event.roomId(),
@@ -76,12 +53,7 @@ public class RedisRoomSubscriber implements MessageListener {
             }
 
             if ("presence".equals(eventType)) {
-
-                RedisPresenceEvent event =
-                        jsonMapper.readValue(
-                                payload,
-                                RedisPresenceEvent.class
-                        );
+                RedisPresenceEvent event = jsonMapper.readValue(payload, RedisPresenceEvent.class);
 
                 String presenceMessage = """
                         {
@@ -93,19 +65,11 @@ public class RedisRoomSubscriber implements MessageListener {
                         event.userId()
                 );
 
-                roomSessionManager.broadcastToRoom(
-                        roomId,
-                        presenceMessage
-                );
+                roomSessionManager.broadcastToRoom(roomId, presenceMessage);
             }
 
         } catch (Exception e) {
-
-            System.err.println(
-                    "Failed to process Redis event: "
-                            + e.getMessage()
-            );
-
+            System.err.println("Failed to process Redis event: " + e.getMessage());
             e.printStackTrace();
         }
     }

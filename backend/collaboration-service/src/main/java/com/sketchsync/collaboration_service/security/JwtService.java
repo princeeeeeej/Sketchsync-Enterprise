@@ -30,11 +30,11 @@ public class JwtService {
     }
 
     public boolean isValid(String token) {
-
         try {
             extractUserId(token);
             return true;
-        } catch (Exception e) {
+        }
+        catch (Exception e) {
             return false;
         }
     }

@@ -17,16 +17,12 @@ import java.io.IOException;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
-
     private static final String COOKIE_NAME = "access_token";
 
     private final JwtService jwtService;
     private final UserService userService;
 
-    public JwtAuthenticationFilter(
-            JwtService jwtService,
-            UserService userService
-    ) {
+    public JwtAuthenticationFilter(JwtService jwtService, UserService userService) {
         this.jwtService = jwtService;
         this.userService = userService;
     }
@@ -40,16 +36,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String token = extractToken(request);
 
-        if (token != null
-                && jwtService.isValid(token)
-                && SecurityContextHolder.getContext().getAuthentication() == null) {
-
+        if (token != null && jwtService.isValid(token) && SecurityContextHolder.getContext().getAuthentication() == null) {
             try {
-
                 String userId = jwtService.extractUserId(token);
-
                 User user = userService.findById(userId);
-
                 UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(
                                 user.getId(),
@@ -72,26 +62,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private String extractToken(HttpServletRequest request) {
 
         String authorization = request.getHeader("Authorization");
-
-        if (authorization != null
-                && authorization.startsWith("Bearer ")) {
-
+        if (authorization != null && authorization.startsWith("Bearer ")) {
             return authorization.substring(7);
         }
 
         Cookie[] cookies = request.getCookies();
-
         if (cookies == null) {
             return null;
         }
-
         for (Cookie cookie : cookies) {
-
             if (COOKIE_NAME.equals(cookie.getName())) {
                 return cookie.getValue();
             }
         }
-
         return null;
     }
 }

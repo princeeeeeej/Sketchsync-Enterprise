@@ -29,9 +29,7 @@ public class AuthService {
         User user = userService.findByEmail(email);
 
         if (!passwordEncoder.matches(password, user.getPassword())) {
-            throw new IllegalArgumentException(
-                    "Invalid email or password"
-            );
+            throw new IllegalArgumentException("Invalid email or password");
         }
 
         return user;
@@ -39,5 +37,9 @@ public class AuthService {
 
     public String generateToken(User user) {
         return jwtService.generateToken(user.getId());
+    }
+
+    public User  getUserByUserId(String userId) {
+        return userService.findById(userId);
     }
 }

@@ -65,12 +65,15 @@ services:
   frontend:
     build:
       context: ./frontend
+      args:
+        CORE_SERVICE_URL: http://core-service:8081
     container_name: sketchsync-frontend
     ports:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_BACKEND_URL=http://localhost:8081
       - NEXT_PUBLIC_WS_URL=ws://localhost:8082/ws
+      - CORE_SERVICE_URL=http://core-service:8081
     depends_on:
       - core-service
       - collaboration-service

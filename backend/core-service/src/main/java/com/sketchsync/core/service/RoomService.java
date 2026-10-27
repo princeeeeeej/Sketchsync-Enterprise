@@ -53,10 +53,11 @@ public class RoomService {
 
         User user = userService.findById(userId);
 
-        if (roomMemberRepository.existsByRoomIdAndUserId(room.getId(), user.getId())) {
-            throw new ForbiddenException(
-                    "User already belongs to this room"
-            );
+        if (roomMemberRepository.existsByRoomIdAndUserId(
+                room.getId(),
+                user.getId()
+        )) {
+            return room;
         }
 
         RoomMember member = new RoomMember();
